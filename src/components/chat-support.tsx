@@ -80,6 +80,8 @@ export default function ChatSupport() {
       Setup result: ${data.setup_result}`, false)
     } catch (error) {
       console.error(error)
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error
       toast.error(error)
     } finally {
       setIsGenerating(false);
