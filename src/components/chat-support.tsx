@@ -15,22 +15,22 @@ import {
 import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
 import { Button } from "./ui/button";
 import { Send } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CodeDisplayBlock from "./code-display-block";
-import {useRequests} from "@/hooks/useRequests";
-import {toast} from "sonner";
+import { useRequests } from "@/hooks/useRequests";
+import { toast } from "sonner";
 
 interface IMessage {
   role: "user" | "agent";
   content: string;
-  timestampCreated: number
+  timestampCreated: number;
 }
 
 export default function ChatSupport() {
-  const [isGenerating, setIsGenerating] = useState(true);
-  const [messages, setMessages] = useState<IMessage[]>([])
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [messages, setMessages] = useState<IMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [inputValue, setInputValue] = useState("");
 
@@ -43,61 +43,71 @@ export default function ChatSupport() {
     }
   }, [messages]);
 
-  const requests = useRequests()
+  const requests = useRequests();
 
-  const addMessage = (content: string, isUser: boolean) => {
-    const message: IMessage = { role: isUser ? "user" : "agent", content, timestampCreated: +new Date() }
-    setMessages([
-      ...messages,
-      message
-    ])
+  const addMessage = useCallback((content: string, isUser: boolean) => {
+    const message: IMessage = {
+      role: isUser ? "user" : "agent",
+      content,
+      timestampCreated: +new Date(),
+    };
 
-    return message
-  }
+    setMessages((prevMessages) => [...prevMessages, message]);
+
+    return message;
+  }, []);
 
   const getInitialMessage = async () => {
-    const response = await requests.get("/agent/get-initial-message")
-    console.log(response.data)
+    try {
+      const response = await requests.get("/agent/get-initial-message");
+      console.log(response.data);
 
-    addMessage(response.data.message, false)
+      addMessage(response.data.message, false);
 
-    setIsLoading(false)
-    setIsGenerating(false)
-  }
+      setIsLoading(false);
+      setIsGenerating(false);
+    } catch (error) {
+      console.error("Failed to fetch initial message", error);
+      toast.error("Failed to fetch the initial message.");
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    getInitialMessage()
+    getInitialMessage();
   }, []);
 
   const handleSubmit = async (message: IMessage) => {
     try {
-      const { data } = await requests.post("/product/process", {data: [...messages, message].map((item) => `${item.role}(${item.timestampCreated}): ${item.content}`).join(";")})
+      const { data } = await requests.post("/product/process", {
+        data: [...messages, message]
+          .map((item) => `${item.role}(${item.timestampCreated}): ${item.content}`)
+          .join(";"),
+      });
 
-      addMessage(`Product info: ${data.product_info}
-      
-      Validation result: ${data.validation_result}
-      
-      Setup result: ${data.setup_result}`, false)
-    } catch (error) {
-      console.error(error)
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-expect-error
-      toast.error(error)
+      addMessage(
+        `Product info: ${data.product_info}\n\nValidation result: ${data.validation_result}\n\nSetup result: ${data.setup_result}`,
+        false
+      );
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "An error occurred");
     } finally {
       setIsGenerating(false);
       setIsLoading(false);
     }
-  }
+  };
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     setIsGenerating(true);
     setIsLoading(true);
-    const message = addMessage(inputValue, true);
-    handleSubmit(message);
 
+    const message = addMessage(inputValue, true);
     setInputValue("");
+
+    await handleSubmit(message);
 
   };
 
@@ -121,46 +131,39 @@ export default function ChatSupport() {
       </ExpandableChatHeader>
 
       <ExpandableChatBody>
-        <ChatMessageList className="bg-muted/25 w-[900px] min-h-96 max-h-[50vh]" ref={messagesRef}>
-          {/* Initial message */}
-          {/*<ChatBubble variant="received">*/}
-          {/*  <ChatBubbleAvatar src="" fallback="🤖" />*/}
-          {/*  <ChatBubbleMessage>*/}
-          {/*    Hello! I'm the AI assistant. How can I help you today?*/}
-          {/*  </ChatBubbleMessage>*/}
-          {/*</ChatBubble>*/}
-
+        <ChatMessageList
+          className="bg-muted/25 w-[900px] min-h-96 max-h-[50vh]"
+          ref={messagesRef}
+        >
           {/* Messages */}
           {messages &&
             messages.map((message, index) => (
               <ChatBubble
                 key={index}
-                variant={message.role == "user" ? "sent" : "received"}
+                variant={message.role === "user" ? "sent" : "received"}
               >
                 <ChatBubbleAvatar
-                  src=""
-                  fallback={message.role == "user" ? "👨🏽" : "🤖"}
+                  src={message.role === "user" ? "" : ""}
+                  fallback={message.role === "user" ? "👨🏽" : "🤖"}
                 />
                 <ChatBubbleMessage
-                  variant={message.role == "user" ? "sent" : "received"}
+                  variant={message.role === "user" ? "sent" : "received"}
                 >
-                  {message.content
-                    .split("```")
-                    .map((part: string, index: number) => {
-                      if (index % 2 === 0) {
-                        return (
-                          <Markdown key={index} remarkPlugins={[remarkGfm]}>
-                            {part}
-                          </Markdown>
-                        );
-                      } else {
-                        return (
-                          <pre className=" pt-2" key={index}>
-                            <CodeDisplayBlock code={part} lang="" />
-                          </pre>
-                        );
-                      }
-                    })}
+                  {message.content.split("```").map((part, index) => {
+                    if (index % 2 === 0) {
+                      return (
+                        <Markdown key={index} remarkPlugins={[remarkGfm]}>
+                          {part}
+                        </Markdown>
+                      );
+                    } else {
+                      return (
+                        <pre className="pt-2" key={index}>
+                          <CodeDisplayBlock code={part} lang="" />
+                        </pre>
+                      );
+                    }
+                  })}
                 </ChatBubbleMessage>
               </ChatBubble>
             ))}
@@ -180,10 +183,10 @@ export default function ChatSupport() {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={onKeyDown}
-            className="min-h-12 bg-background shadow-none "
+            className="min-h-12 bg-background shadow-none"
           />
           <Button
-            className="absolute top-1/2 right-2 transform  -translate-y-1/2"
+            className="absolute top-1/2 right-2 transform -translate-y-1/2"
             type="submit"
             size="icon"
             disabled={isLoading}
